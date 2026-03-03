@@ -8,7 +8,7 @@
     ],
     "host_permissions": [
         "https://*.discord.com/*",
-        "http://localhost:6969/*"
+        "http://127.0.0.1:6969/*"
     ],
     "content_scripts": [
         {
