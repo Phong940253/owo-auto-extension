@@ -1,0 +1,28 @@
+{
+    "manifest_version": 3,
+    "name": "Poketwo Image Forwarder (Firefox)",
+    "version": "1.0",
+    "description": "Bypasses CORS to send Discord images to local Gemini API.",
+    "permissions": [
+        "tabs"
+    ],
+    "host_permissions": [
+        "https://*.discord.com/*",
+        "http://localhost:6969/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*.discord.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ],
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "poketwo-forwarder@local-dev"
+        }
+    }
+}
