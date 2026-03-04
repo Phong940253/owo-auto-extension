@@ -61,30 +61,45 @@ async function analyzePokemon(imageUrl) {
     console.log("Firefox Extension: Sending image to local backend:", imageUrl);
 
     try {
-        // Fetch the image from Discord's CDN
-        const response = await fetch(imageUrl);
-        const blob = await response.blob();
-
-        // Convert to Base64
-        const base64Data = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(blob);
-        });
-
-        // Match backend model expecting files as base64 strings
-        const payload = {
-            message: "What is the name of the Pokémon in this image? Respond with only the name.",
-            files: [base64Data]
-        };
-
-        const res = await fetch(BACKEND_URL, {
+        const requestOptions = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+        };
+
+        // Attempt 1: image URL in files
+        let payload = {
+            message: "What is the name of the Pokémon in this image? Respond with only the name.",
+            files: [imageUrl]
+        };
+
+        let res = await fetch(BACKEND_URL, {
+            ...requestOptions,
             body: JSON.stringify(payload)
         });
 
-        const data = await res.json();
+        let data = await res.json().catch(() => ({}));
+
+        // Attempt 2: fallback for backends that only accept local file paths
+        const errorDetail = typeof data?.detail === 'string' ? data.detail.toLowerCase() : '';
+        if (!res.ok && errorDetail.includes('not a valid file')) {
+            console.warn('⚠️ Backend rejected URL as file path. Retrying with URL in message text.');
+            payload = {
+                message: `What is the name of the Pokémon in this image URL: ${imageUrl}. Respond with only the name.`,
+                files: []
+            };
+
+            res = await fetch(BACKEND_URL, {
+                ...requestOptions,
+                body: JSON.stringify(payload)
+            });
+
+            data = await res.json().catch(() => ({}));
+        }
+
+        if (!res.ok) {
+            throw new Error(data?.detail || `Backend error ${res.status}`);
+        }
+
         const pokemonName = normalizePokemonName(data?.response);
         console.log("✅ Firefox Ext identified:", pokemonName || data?.response);
 
