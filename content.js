@@ -66,7 +66,7 @@ async function analyzePokemon(imageUrl) {
             headers: { 'Content-Type': 'application/json' },
         };
 
-        // Attempt 1: image URL in files
+        // Attempt 1: image URL in files using updated API body shape
         let payload = {
             message: "What is the name of the Pokémon in this image? Respond with only the name.",
             files: [imageUrl]
