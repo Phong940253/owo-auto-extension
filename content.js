@@ -1,5 +1,5 @@
 const BACKEND_URL = 'http://127.0.0.1:6969/gemini-chat';
-const CATCH_COMMAND_PREFIX = 'c ';
+const CATCH_COMMAND_PREFIX = '@Pokétwo#8236 catch ';
 const processedImageUrls = new Set();
 
 function normalizePokemonName(rawText) {
