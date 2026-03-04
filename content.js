@@ -1,4 +1,3 @@
-const BACKEND_URL = 'http://127.0.0.1:6969/gemini-chat';
 const CATCH_COMMAND_PREFIX = '@Pokétwo#8236 catch ';
 const processedImageUrls = new Set();
 
@@ -58,53 +57,28 @@ function testSend(message = `${CATCH_COMMAND_PREFIX}pikachu`) {
 }
 
 async function analyzePokemon(imageUrl) {
-    console.log("Firefox Extension: Sending image to local backend:", imageUrl);
+    console.log('Firefox Extension: Requesting background analysis for image:', imageUrl);
 
     try {
-        const requestOptions = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-        };
+        const runtimeApi = globalThis.browser?.runtime || globalThis.chrome?.runtime;
+        if (!runtimeApi?.sendMessage) {
+            throw new Error('Extension runtime API is unavailable in content script');
+        }
 
-        // Attempt 1: image URL in files using updated API body shape
-        let payload = {
-            message: "What is the name of the Pokémon in this image? Respond with only the name.",
-            files: [imageUrl]
-        };
-
-        let res = await fetch(BACKEND_URL, {
-            ...requestOptions,
-            body: JSON.stringify(payload)
+        const response = await runtimeApi.sendMessage({
+            type: 'ANALYZE_POKEMON_IMAGE',
+            imageUrl
         });
 
-        let data = await res.json().catch(() => ({}));
-
-        // Attempt 2: fallback for backends that only accept local file paths
-        const errorDetail = typeof data?.detail === 'string' ? data.detail.toLowerCase() : '';
-        if (!res.ok && errorDetail.includes('not a valid file')) {
-            console.warn('⚠️ Backend rejected URL as file path. Retrying with URL in message text.');
-            payload = {
-                message: `What is the name of the Pokémon in this image URL: ${imageUrl}. Respond with only the name.`,
-                files: []
-            };
-
-            res = await fetch(BACKEND_URL, {
-                ...requestOptions,
-                body: JSON.stringify(payload)
-            });
-
-            data = await res.json().catch(() => ({}));
+        if (!response?.ok) {
+            throw new Error(response?.error || 'Background analysis failed');
         }
 
-        if (!res.ok) {
-            throw new Error(data?.detail || `Backend error ${res.status}`);
-        }
-
-        const pokemonName = normalizePokemonName(data?.response);
-        console.log("✅ Firefox Ext identified:", pokemonName || data?.response);
+        const pokemonName = normalizePokemonName(response.pokemonName);
+        console.log('✅ Firefox Ext identified:', pokemonName || response.pokemonName);
 
         if (!pokemonName) {
-            console.warn('⚠️ No Pokémon name returned from backend response');
+            console.warn('⚠️ No Pokémon name returned from Gemini response');
             return;
         }
 
@@ -113,7 +87,7 @@ async function analyzePokemon(imageUrl) {
             console.log('📨 Sent to Discord:', `${CATCH_COMMAND_PREFIX}${pokemonName}`);
         }
     } catch (error) {
-        console.error("❌ Firefox Extension Error:", error);
+        console.error('❌ Firefox Extension Error:', error);
     }
 }
 

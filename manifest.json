@@ -2,14 +2,21 @@
     "manifest_version": 3,
     "name": "Poketwo Image Forwarder (Firefox)",
     "version": "1.0",
-    "description": "Bypasses CORS to send Discord images to local Gemini API.",
+    "description": "Detects Poketwo spawns and asks Gemini to identify Pokémon from image files.",
     "permissions": [
         "tabs"
     ],
     "host_permissions": [
         "https://*.discord.com/*",
-        "http://127.0.0.1:6969/*"
+        "https://*.discordapp.com/*",
+        "https://*.discordapp.net/*",
+        "https://generativelanguage.googleapis.com/*"
     ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ]
+    },
     "content_scripts": [
         {
             "matches": [
