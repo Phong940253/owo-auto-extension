@@ -1,5 +1,57 @@
 const CATCH_COMMAND_PREFIX = '@Pokétwo#8236 catch ';
 const processedImageUrls = new Set();
+const ALLOWED_BOT_NAMES = new Set(['Pokétwo']);
+
+function normalizeAuthorName(rawText) {
+    if (!rawText) return '';
+    return String(rawText)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase();
+}
+
+function isAllowedAuthorName(authorName) {
+    const normalized = normalizeAuthorName(authorName)
+        .replace(/^@+/, '')
+        .split('#')[0]
+        .trim();
+    return ALLOWED_BOT_NAMES.has(normalized);
+}
+
+function extractMessageAuthorNameFromImage(img) {
+    const messageNode = img.closest('li[id^="chat-messages-"], [data-list-item-id^="chat-messages"]');
+    if (!messageNode) {
+        return '';
+    }
+
+    const authorSelectors = [
+        '[id^="message-username-"]',
+        'h3 span[class*="username"]',
+        'span[class*="username"]'
+    ];
+
+    for (const selector of authorSelectors) {
+        const authorElement = messageNode.querySelector(selector);
+        const authorName = authorElement?.textContent?.trim();
+        if (authorName) {
+            return authorName;
+        }
+    }
+
+    const ariaLabel = (messageNode.getAttribute('aria-label') || '').trim();
+    if (!ariaLabel) {
+        return '';
+    }
+
+    const authorFromAria = ariaLabel.split(',')[0].trim();
+    return authorFromAria;
+}
+
+function isPoketwoMessageImage(img) {
+    const authorName = extractMessageAuthorNameFromImage(img);
+    return isAllowedAuthorName(authorName);
+}
 
 function normalizePokemonName(rawText) {
     if (!rawText) return '';
@@ -108,6 +160,10 @@ const observer = new MutationObserver((mutations) => {
             if (node.nodeType === 1) {
                 const img = extractPokemonImage(node);
                 if (!img?.src || img.src.includes('data:image')) {
+                    return;
+                }
+
+                if (!isPoketwoMessageImage(img)) {
                     return;
                 }
 
