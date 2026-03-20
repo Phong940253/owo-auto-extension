@@ -1,14 +1,26 @@
 const CATCH_COMMAND_PREFIX = '@Pokétwo#8236 catch ';
 const AUTO_HUNT_COMMAND = 'oh';
-const AUTO_HUNT_INTERVAL_MS = 15_000;
+const AUTO_BATTLE_COMMAND = 'ob';
+const AUTO_OPRAY_COMMAND = 'opray';
+const AUTO_HUNT_TO_BATTLE_DELAY_MS = 450;
+const AUTO_HUNT_INTERVAL_MIN_MS = 15_000;
+const AUTO_HUNT_INTERVAL_MAX_MS = 25_000;
+const AUTO_OPRAY_INTERVAL_MS = 330_000;
+const OWNER_MENTION_TEXT = '@꧁༺༒Phong༒༻꧂';
+const VERIFY_ALERT_TEXT = 'are you a real human';
+const VERIFY_BUTTON_TEXT = 'verify';
 const processedImageUrls = new Set();
+const processedVerifyMessageIds = new Set();
 const ALLOWED_BOT_NAMES = new Set(['poketwoverified appapp', '']);
-let autoHuntIntervalId = null;
+let autoHuntTimeoutId = null;
 let autoHuntButton = null;
 let autoHuntStatus = null;
 let autoCatchEnabled = true;
 let autoCatchButton = null;
 let autoCatchStatus = null;
+let autoOprayIntervalId = null;
+let autoOprayButton = null;
+let autoOprayStatus = null;
 let overlayPanel = null;
 
 function normalizeAuthorName(rawText) {
@@ -73,6 +85,82 @@ function normalizePokemonName(rawText) {
         .replace(/\.$/, '');
 }
 
+function sanitizeMessageText(rawText) {
+    if (!rawText) return '';
+    return String(rawText)
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function getMessageKey(messageNode) {
+    const listItemId = messageNode.getAttribute('data-list-item-id');
+    if (listItemId) {
+        return listItemId;
+    }
+
+    const labelledBy = messageNode.getAttribute('aria-labelledby');
+    if (labelledBy) {
+        return labelledBy;
+    }
+
+    return messageNode.id || '';
+}
+
+function isVerifyChallengeMessage(messageNode) {
+    if (!messageNode || messageNode.nodeType !== 1) {
+        return false;
+    }
+
+    const authorElement = messageNode.querySelector('[id^="message-username-"], span[class*="username"]');
+    const authorName = normalizeAuthorName(authorElement?.textContent || '');
+    if (!authorName.includes('owo')) {
+        return false;
+    }
+
+    const contentElement = messageNode.querySelector('[id^="message-content-"]');
+    const messageText = sanitizeMessageText(contentElement?.textContent || '');
+    const hasVerifyWarningText = messageText.includes(VERIFY_ALERT_TEXT) && messageText.includes('link below');
+
+    const buttonLabels = Array.from(messageNode.querySelectorAll('button, [role="button"]'))
+        .map((button) => sanitizeMessageText(button.textContent || ''));
+    const hasVerifyButton = buttonLabels.some((label) => label.includes(VERIFY_BUTTON_TEXT));
+
+    return hasVerifyWarningText && hasVerifyButton;
+}
+
+function getOwOVerifyMessageNodes(node) {
+    if (!node || node.nodeType !== 1) {
+        return [];
+    }
+
+    const candidates = [];
+    if (node.matches?.('[role="article"][data-list-item-id^="chat-messages"], li[id^="chat-messages-"]')) {
+        candidates.push(node);
+    }
+
+    const nested = node.querySelectorAll?.('[role="article"][data-list-item-id^="chat-messages"], li[id^="chat-messages-"]') || [];
+    nested.forEach((element) => candidates.push(element));
+
+    return candidates.filter(isVerifyChallengeMessage);
+}
+
+function stopAutomationAndTagOwner() {
+    stopAutoHunt();
+    setAutoCatchEnabled(false);
+    stopAutoOpray();
+
+    const alertMessage = `${OWNER_MENTION_TEXT} OwO verify da xuat hien, minh da dung auto. Vao verify ngay!`;
+    const sent = sendDiscordMessage(alertMessage);
+
+    if (sent) {
+        console.warn('⚠️ OwO verify detected. Auto hunt/catch stopped and owner notified.');
+    } else {
+        console.warn('⚠️ OwO verify detected. Auto hunt/catch stopped but unable to send alert tag.');
+    }
+}
+
 function findDiscordMessageBox() {
     const allBoxes = Array.from(document.querySelectorAll('div[role="textbox"][contenteditable="true"]'));
     return allBoxes.find((box) => {
@@ -120,7 +208,7 @@ function testSend(message = `${CATCH_COMMAND_PREFIX}pikachu`) {
 }
 
 function isAutoHuntEnabled() {
-    return autoHuntIntervalId !== null;
+    return autoHuntTimeoutId !== null;
 }
 
 function isAutoCatchEnabled() {
@@ -147,6 +235,53 @@ function toggleAutoCatch() {
     setAutoCatchEnabled(!isAutoCatchEnabled());
 }
 
+function isAutoOprayEnabled() {
+    return autoOprayIntervalId !== null;
+}
+
+function updateAutoOprayOverlayState() {
+    if (!autoOprayButton || !autoOprayStatus) {
+        return;
+    }
+
+    const enabled = isAutoOprayEnabled();
+    autoOprayButton.textContent = enabled ? 'Auto Opray: ON' : 'Auto Opray: OFF';
+    autoOprayButton.style.background = enabled ? '#22c55e' : '#ef4444';
+    autoOprayStatus.textContent = enabled ? 'Gui opray moi 5p30s' : 'Dang tat';
+}
+
+function stopAutoOpray() {
+    if (autoOprayIntervalId !== null) {
+        clearInterval(autoOprayIntervalId);
+        autoOprayIntervalId = null;
+    }
+
+    updateAutoOprayOverlayState();
+}
+
+function startAutoOpray() {
+    if (autoOprayIntervalId !== null) {
+        return;
+    }
+
+    autoOprayIntervalId = setInterval(() => {
+        const sent = sendDiscordMessage(AUTO_OPRAY_COMMAND);
+        if (!sent) {
+            console.warn('⚠️ Auto Opray: cannot send command, message box unavailable');
+        }
+    }, AUTO_OPRAY_INTERVAL_MS);
+
+    updateAutoOprayOverlayState();
+}
+
+function toggleAutoOpray() {
+    if (isAutoOprayEnabled()) {
+        stopAutoOpray();
+    } else {
+        startAutoOpray();
+    }
+}
+
 function updateAutoHuntOverlayState() {
     if (!autoHuntButton || !autoHuntStatus) {
         return;
@@ -155,32 +290,65 @@ function updateAutoHuntOverlayState() {
     const enabled = isAutoHuntEnabled();
     autoHuntButton.textContent = enabled ? 'Auto Hunt: ON' : 'Auto Hunt: OFF';
     autoHuntButton.style.background = enabled ? '#22c55e' : '#ef4444';
-    autoHuntStatus.textContent = enabled ? 'Gửi oh mỗi 15s' : 'Đang tắt';
+    autoHuntStatus.textContent = enabled ? 'Gửi oh -> ob, ngẫu nhiên 15-25s' : 'Đang tắt';
 }
 
 function stopAutoHunt() {
-    if (autoHuntIntervalId !== null) {
-        clearInterval(autoHuntIntervalId);
-        autoHuntIntervalId = null;
+    if (autoHuntTimeoutId !== null) {
+        clearTimeout(autoHuntTimeoutId);
+        autoHuntTimeoutId = null;
     }
 
     updateAutoHuntOverlayState();
 }
 
+function getRandomAutoHuntDelayMs() {
+    return Math.floor(
+        Math.random() * (AUTO_HUNT_INTERVAL_MAX_MS - AUTO_HUNT_INTERVAL_MIN_MS + 1)
+    ) + AUTO_HUNT_INTERVAL_MIN_MS;
+}
+
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function startAutoHunt() {
-    if (autoHuntIntervalId !== null) {
+    if (autoHuntTimeoutId !== null) {
         return;
     }
 
-    const sendHunt = () => {
+    const sendHunt = async () => {
         const sent = sendDiscordMessage(AUTO_HUNT_COMMAND);
         if (!sent) {
             console.warn('⚠️ Auto Hunt: cannot send oh, message box unavailable');
+            return;
+        }
+
+        await wait(AUTO_HUNT_TO_BATTLE_DELAY_MS);
+
+        const sentBattle = sendDiscordMessage(AUTO_BATTLE_COMMAND);
+        if (!sentBattle) {
+            console.warn('⚠️ Auto Hunt: sent oh but cannot send ob, message box unavailable');
         }
     };
 
+    const scheduleNextHunt = () => {
+        if (!isAutoHuntEnabled()) {
+            return;
+        }
+
+        const delay = getRandomAutoHuntDelayMs();
+        autoHuntTimeoutId = setTimeout(() => {
+            sendHunt();
+            scheduleNextHunt();
+        }, delay);
+    };
+
     sendHunt();
-    autoHuntIntervalId = setInterval(sendHunt, AUTO_HUNT_INTERVAL_MS);
+    autoHuntTimeoutId = setTimeout(() => {
+        sendHunt();
+        scheduleNextHunt();
+    }, getRandomAutoHuntDelayMs());
     updateAutoHuntOverlayState();
 }
 
@@ -339,6 +507,28 @@ function createAutoHuntOverlay() {
     autoHuntRow.appendChild(autoHuntStatus);
     contentArea.appendChild(autoHuntRow);
 
+    const autoOprayRow = createPanelRow('Auto Opray');
+
+    autoOprayButton = document.createElement('button');
+    autoOprayButton.type = 'button';
+    autoOprayButton.textContent = 'Auto Opray: OFF';
+    autoOprayButton.style.border = 'none';
+    autoOprayButton.style.borderRadius = '6px';
+    autoOprayButton.style.padding = '8px 10px';
+    autoOprayButton.style.color = '#fff';
+    autoOprayButton.style.cursor = 'pointer';
+    autoOprayButton.style.fontWeight = '600';
+    autoOprayButton.addEventListener('click', toggleAutoOpray);
+
+    autoOprayStatus = document.createElement('div');
+    autoOprayStatus.textContent = 'Dang tat';
+    autoOprayStatus.style.fontSize = '11px';
+    autoOprayStatus.style.opacity = '0.85';
+
+    autoOprayRow.appendChild(autoOprayButton);
+    autoOprayRow.appendChild(autoOprayStatus);
+    contentArea.appendChild(autoOprayRow);
+
     overlayPanel.appendChild(dragHeader);
     overlayPanel.appendChild(contentArea);
     document.body.appendChild(overlayPanel);
@@ -346,6 +536,7 @@ function createAutoHuntOverlay() {
     enableOverlayDrag(overlayPanel, dragHeader);
     updateAutoCatchOverlayState();
     updateAutoHuntOverlayState();
+    updateAutoOprayOverlayState();
 }
 
 function initAutoHuntOverlay() {
@@ -409,6 +600,20 @@ const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
         mutation.addedNodes.forEach(node => {
             if (node.nodeType === 1) {
+                const verifyNodes = getOwOVerifyMessageNodes(node);
+                verifyNodes.forEach((messageNode) => {
+                    const messageKey = getMessageKey(messageNode);
+                    if (messageKey && processedVerifyMessageIds.has(messageKey)) {
+                        return;
+                    }
+
+                    if (messageKey) {
+                        processedVerifyMessageIds.add(messageKey);
+                    }
+
+                    stopAutomationAndTagOwner();
+                });
+
                 const img = extractPokemonImage(node);
                 if (!img?.src || img.src.includes('data:image')) {
                     return;
@@ -449,6 +654,12 @@ window.poketwoAutoCatch = {
     toggle: toggleAutoCatch,
     isEnabled: isAutoCatchEnabled,
     setEnabled: setAutoCatchEnabled
+};
+window.poketwoAutoOpray = {
+    start: startAutoOpray,
+    stop: stopAutoOpray,
+    toggle: toggleAutoOpray,
+    isEnabled: isAutoOprayEnabled
 };
 
 document.addEventListener('keydown', (event) => {
