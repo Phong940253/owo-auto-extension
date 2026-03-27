@@ -27,6 +27,18 @@
             ]
         }
     ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "page-bridge.js"
+            ],
+            "matches": [
+                "https://*.discord.com/*",
+                "https://*.discordapp.com/*",
+                "https://*.discordapp.net/*"
+            ]
+        }
+    ],
     "browser_specific_settings": {
         "gecko": {
             "id": "poketwo-forwarder@local-dev"

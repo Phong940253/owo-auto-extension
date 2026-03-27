@@ -432,6 +432,72 @@ function testSend(message = `${CATCH_COMMAND_PREFIX}pikachu`) {
     return sent;
 }
 
+function installPageConsoleBridge() {
+    if (window.__poketwoBridgeListenerInstalled) {
+        return;
+    }
+
+    window.__poketwoBridgeListenerInstalled = true;
+
+    window.addEventListener('__poketwo_ext_call', (event) => {
+        const detail = event?.detail || {};
+        const id = detail.id;
+        const command = detail.command;
+        const args = Array.isArray(detail.args) ? detail.args : [];
+
+        let result;
+        let error = '';
+
+        try {
+            switch (command) {
+                case 'testSend':
+                    result = testSend(args[0]);
+                    break;
+                case 'testCatch':
+                    result = testSend(`${CATCH_COMMAND_PREFIX}${args[0] || 'pikachu'}`);
+                    break;
+                case 'testGetId':
+                    result = testGetId();
+                    break;
+                default:
+                    throw new Error(`Unknown command: ${String(command)}`);
+            }
+        } catch (err) {
+            error = err?.message || String(err);
+        }
+
+        window.dispatchEvent(new CustomEvent('__poketwo_ext_result', {
+            detail: {
+                id,
+                command,
+                result,
+                error
+            }
+        }));
+    });
+
+    const runtimeApi = globalThis.browser?.runtime || globalThis.chrome?.runtime;
+    const bridgeUrl = runtimeApi?.getURL?.('page-bridge.js');
+
+    if (!bridgeUrl) {
+        console.warn('⚠️ Unable to resolve page bridge URL');
+        return;
+    }
+
+    if (document.querySelector(`script[data-poketwo-bridge="1"][src="${bridgeUrl}"]`)) {
+        return;
+    }
+
+    const bridgeScript = document.createElement('script');
+    bridgeScript.src = bridgeUrl;
+    bridgeScript.dataset.poketwoBridge = '1';
+
+    (document.documentElement || document.head || document.body).appendChild(bridgeScript);
+    bridgeScript.addEventListener('load', () => {
+        bridgeScript.remove();
+    }, { once: true });
+}
+
 function isAutoHuntEnabled() {
     return autoHuntTimeoutId !== null;
 }
@@ -874,6 +940,7 @@ const observer = new MutationObserver((mutations) => {
 const targetNode = document.querySelector('[aria-label="Messages in spam"]') || document.body;
 observer.observe(targetNode, { childList: true, subtree: true });
 initAutoHuntOverlay();
+installPageConsoleBridge();
 window.poketwoTestSend = testSend;
 window.poketwoTestCatch = (pokemonName = 'pikachu') => testSend(`${CATCH_COMMAND_PREFIX}${pokemonName}`);
 window.poketwoTestGetId = testGetId;
