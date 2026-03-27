@@ -6,7 +6,7 @@ const AUTO_HUNT_TO_BATTLE_DELAY_MS = 450;
 const AUTO_HUNT_INTERVAL_MIN_MS = 15_000;
 const AUTO_HUNT_INTERVAL_MAX_MS = 25_000;
 const AUTO_OPRAY_INTERVAL_MS = 330_000;
-const OWNER_MENTION_TEXT = '<@phong940253>';
+const DEFAULT_OWNER_USERNAME = 'phong940253';
 const VERIFY_ALERT_TEXT = 'are you a real human';
 const VERIFY_BUTTON_TEXT = 'verify';
 const processedImageUrls = new Set();
@@ -146,12 +146,103 @@ function getOwOVerifyMessageNodes(node) {
     return candidates.filter(isVerifyChallengeMessage);
 }
 
+function getCurrentDiscordUsername() {
+    const userAreaTrigger = document.querySelector(
+        '[data-jump-section="global"][role="button"], [aria-label="Manage profile and status"][role="button"]'
+    );
+    const userAreaRoot = userAreaTrigger?.parentElement || null;
+    const searchRoot = userAreaRoot || document;
+
+    const ignoredValues = new Set(['online', 'idle', 'invisible', 'offline', 'do not disturb', 'streaming']);
+    const textNodes = Array.from(searchRoot.querySelectorAll('span, div'));
+
+    for (const node of textNodes) {
+        const text = node.textContent?.trim() || '';
+        if (!text || text.length < 2 || text.length > 32) {
+            continue;
+        }
+
+        if (ignoredValues.has(text.toLowerCase())) {
+            continue;
+        }
+
+        // Prefer the account username-like token (letters/numbers/._ only).
+        if (/^[a-z0-9._]{2,32}$/i.test(text)) {
+            return text;
+        }
+    }
+
+    return DEFAULT_OWNER_USERNAME;
+}
+
+function extractDiscordUserIdFromAvatarUrl(url) {
+    if (!url) {
+        return '';
+    }
+
+    const match = String(url).match(/\/avatars\/(\d+)\//i);
+    return match?.[1] || '';
+}
+
+function getCurrentDiscordUserId() {
+    const userAreaTrigger = document.querySelector(
+        '[data-jump-section="global"][role="button"], [aria-label="Manage profile and status"][role="button"]'
+    );
+    const userAreaRoot = userAreaTrigger?.parentElement || null;
+    const avatarSelectors = [
+        'img[src*="/avatars/"]',
+        'img[src*="cdn.discordapp.com/avatars/"]',
+        'img[src*="media.discordapp.net/avatars/"]'
+    ].join(', ');
+
+    const avatarCandidates = userAreaRoot
+        ? Array.from(userAreaRoot.querySelectorAll(avatarSelectors))
+        : Array.from(document.querySelectorAll(avatarSelectors));
+
+    for (const avatarImg of avatarCandidates) {
+        const userId = extractDiscordUserIdFromAvatarUrl(avatarImg?.src || '');
+        if (userId) {
+            return userId;
+        }
+    }
+
+    return '';
+}
+
+function testGetId() {
+    const userId = getCurrentDiscordUserId();
+    const username = getCurrentDiscordUsername();
+    const result = {
+        userId,
+        username,
+        mentionById: userId ? `<@${userId}>` : '',
+        mentionByName: username ? `@${username}` : ''
+    };
+
+    if (userId) {
+        console.log('🧪 Current Discord user info:', result);
+    } else {
+        console.warn('🧪 Could not detect Discord user ID from user area avatar.', result);
+    }
+
+    return result;
+}
+
+function getOwnerMentionText() {
+    const username = getCurrentDiscordUsername();
+    if (!username) {
+        return `@${DEFAULT_OWNER_USERNAME}`;
+    }
+
+    return username.startsWith('@') ? username : `@${username}`;
+}
+
 function stopAutomationAndTagOwner() {
     stopAutoHunt();
     setAutoCatchEnabled(false);
     stopAutoOpray();
 
-    const alertMessage = `${OWNER_MENTION_TEXT} OwO verify da xuat hien, minh da dung auto. Vao verify ngay!`;
+    const alertMessage = `${getOwnerMentionText()} OwO verify da xuat hien, minh da dung auto. Vao verify ngay!`;
     const sent = sendDiscordMessage(alertMessage);
 
     if (sent) {
@@ -722,11 +813,18 @@ async function analyzePokemon(imageUrl) {
 function extractPokemonImage(node) {
     if (!node || node.nodeType !== 1) return null;
 
-    if (node.matches?.('.imageWrapper_af017a img')) {
+    const attachmentImageSelector = [
+        'img[src*="cdn.discordapp.com/attachments/"]',
+        'img[src*="media.discordapp.net/attachments/"]',
+        'img[src*="cdn.discordapp.com/ephemeral-attachments/"]',
+        'img[src*="media.discordapp.net/ephemeral-attachments/"]'
+    ].join(', ');
+
+    if (node.matches?.(attachmentImageSelector)) {
         return node;
     }
 
-    return node.querySelector?.('.imageWrapper_af017a img') || null;
+    return node.querySelector?.(attachmentImageSelector) || null;
 }
 
 // Mutation Observer to watch for Pokétwo spawns
@@ -778,6 +876,7 @@ observer.observe(targetNode, { childList: true, subtree: true });
 initAutoHuntOverlay();
 window.poketwoTestSend = testSend;
 window.poketwoTestCatch = (pokemonName = 'pikachu') => testSend(`${CATCH_COMMAND_PREFIX}${pokemonName}`);
+window.poketwoTestGetId = testGetId;
 window.poketwoAutoHunt = {
     start: startAutoHunt,
     stop: stopAutoHunt,
@@ -803,4 +902,4 @@ document.addEventListener('keydown', (event) => {
 });
 
 console.log("🚀 Firefox Poketwo Forwarder Active");
-console.log('🧪 Test helpers ready: poketwoTestSend("hello"), poketwoTestCatch("mew") or press Alt+Shift+T');
+console.log('🧪 Test helpers ready: poketwoTestSend("hello"), poketwoTestCatch("mew"), poketwoTestGetId() or press Alt+Shift+T');
