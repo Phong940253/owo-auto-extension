@@ -169,6 +169,133 @@ function findDiscordMessageBox() {
     }) || null;
 }
 
+function dispatchEnterKeySequence(target) {
+    const keyEventInit = {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true
+    };
+
+    const keyDownEvent = new KeyboardEvent('keydown', keyEventInit);
+    const keyPressEvent = new KeyboardEvent('keypress', keyEventInit);
+    const keyUpEvent = new KeyboardEvent('keyup', keyEventInit);
+
+    const keyDownAccepted = target.dispatchEvent(keyDownEvent);
+    target.dispatchEvent(keyPressEvent);
+    target.dispatchEvent(keyUpEvent);
+
+    return keyDownAccepted;
+}
+
+function placeCaretAtEnd(element) {
+    const selection = window.getSelection();
+    if (!selection) {
+        return;
+    }
+
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+function hasSlateTextValue(box) {
+    return Boolean(box.querySelector('[data-slate-string="true"]'));
+}
+
+function insertTextIntoDiscordBox(box, text) {
+    const value = String(text || '');
+    if (!value) {
+        return false;
+    }
+
+    box.focus();
+    placeCaretAtEnd(box);
+
+    let insertedWithExecCommand = false;
+    try {
+        insertedWithExecCommand = document.execCommand('insertText', false, value);
+    } catch (error) {
+        insertedWithExecCommand = false;
+    }
+
+    if (hasSlateTextValue(box)) {
+        return true;
+    }
+
+    try {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.setData('text/plain', value);
+
+        const pasteEvent = new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: dataTransfer
+        });
+
+        box.dispatchEvent(pasteEvent);
+    } catch (error) {
+        // Ignore and continue to final check.
+    }
+
+    if (hasSlateTextValue(box)) {
+        return true;
+    }
+
+    return insertedWithExecCommand;
+}
+
+function clickDiscordSendButton(box) {
+    const form = box.closest('form');
+    if (!form) {
+        return false;
+    }
+
+    const candidates = Array.from(form.querySelectorAll('button, [role="button"]'));
+    const sendButton = candidates.find((candidate) => {
+        const label = (candidate.getAttribute('aria-label') || candidate.textContent || '').trim().toLowerCase();
+        const disabled = candidate.getAttribute('aria-disabled') === 'true' || candidate.disabled === true;
+
+        if (disabled) {
+            return false;
+        }
+
+        return label === 'send' || label.includes('send message');
+    });
+
+    if (!sendButton) {
+        return false;
+    }
+
+    sendButton.click();
+    return true;
+}
+
+function submitClosestMessageForm(target) {
+    const form = target.closest('form');
+    if (!form) {
+        return false;
+    }
+
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+    const notCanceled = form.dispatchEvent(submitEvent);
+
+    if (!notCanceled) {
+        return true;
+    }
+
+    if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+        return true;
+    }
+
+    return false;
+}
+
 function sendDiscordMessage(text) {
     const box = findDiscordMessageBox();
     if (!box) {
@@ -176,24 +303,31 @@ function sendDiscordMessage(text) {
         return false;
     }
 
-    box.focus();
-    const inserted = document.execCommand('insertText', false, text);
-
+    const inserted = insertTextIntoDiscordBox(box, text);
     if (!inserted) {
-        box.textContent = text;
-        box.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+        console.warn('⚠️ Could not insert text into Discord editor');
+        return false;
     }
 
-    const enterEvent = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true
-    });
+    dispatchEnterKeySequence(box);
 
-    box.dispatchEvent(enterEvent);
+    if ((box.textContent || '').trim()) {
+        clickDiscordSendButton(box);
+    }
+
+    const remainingText = (box.textContent || '').trim();
+    if (remainingText) {
+        submitClosestMessageForm(box);
+    }
+
+    setTimeout(() => {
+        if ((box.textContent || '').trim()) {
+            dispatchEnterKeySequence(box);
+            clickDiscordSendButton(box);
+            submitClosestMessageForm(box);
+        }
+    }, 40);
+
     return true;
 }
 
