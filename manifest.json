@@ -23,6 +23,9 @@
                 "https://*.discord.com/*"
             ],
             "js": [
+                "constants.js",
+                "discord.js",
+                "automation.js",
                 "content.js"
             ]
         }
