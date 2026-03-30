@@ -23,8 +23,8 @@ jobs:
 
       - name: Create Zip File
         run: |
-          # Zips files excluding dev/test/unrelated files
-          zip -r extension.zip . -x "*.git*" -x "*.github*" -x "*.html" -x "split.js" -x "*.zip" -x "build-and-commit.ps1"
+          # Zips files excluding dev/test/unrelated files, but keeping offscreen.html
+          zip -r extension.zip . -x "*.git*" -x "*.github*" -x "test*.html" -x "have-gem.html" -x "out-of-gem.html" -x "split.js" -x "*.zip" -x "build-and-commit.ps1"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
