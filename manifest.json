@@ -4,7 +4,9 @@
     "version": "1.0",
     "description": "Detects Poketwo spawns and asks Gemini to identify Pokémon from image files.",
     "permissions": [
-        "tabs"
+        "tabs",
+        "offscreen",
+        "alarms"
     ],
     "host_permissions": [
         "https://*.discord.com/*",

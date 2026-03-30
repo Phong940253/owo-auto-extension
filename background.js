@@ -86,8 +86,45 @@ async function analyzePokemonInBackground(imageUrl) {
 
 const runtimeApi = globalThis.browser?.runtime || globalThis.chrome?.runtime;
 
+// --- KEEP ALIVE SYSTEM FOR CHROME MANIFEST V3 ---
+async function ensureOffscreenDocument() {
+    if (!globalThis.chrome?.offscreen) return;
+    try {
+        const hasDocument = await chrome.offscreen.hasDocument();
+        if (hasDocument) return;
+
+        await chrome.offscreen.createDocument({
+            url: 'offscreen.html',
+            reasons: [chrome.offscreen.Reason.DOM_SCRAPING],
+            justification: 'Keep service worker alive for Discord automation'
+        });
+        console.log('Keep-alive offscreen document created.');
+    } catch (e) {
+        if (!e.message.includes('Only a single offscreen document')) {
+            console.error('Failed to create offscreen document:', e);
+        }
+    }
+}
+
+if (globalThis.chrome?.alarms) {
+    chrome.alarms.create("keepAliveAlarm", { periodInMinutes: 1 });
+    chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === "keepAliveAlarm") {
+            ensureOffscreenDocument();
+        }
+    });
+}
+
+// Initial wake up
+ensureOffscreenDocument();
+// ------------------------------------------------
+
 if (runtimeApi?.onMessage?.addListener) {
     runtimeApi.onMessage.addListener((message) => {
+        if (message?.type === 'KEEPALIVE_PING') {
+            return Promise.resolve({ ok: true });
+        }
+
         if (message?.type !== 'ANALYZE_POKEMON_IMAGE' || !message.imageUrl) {
             return false;
         }
