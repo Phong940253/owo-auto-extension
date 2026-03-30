@@ -111,8 +111,7 @@ function startAutoHunt() {
         return;
     }
 
-    sendDiscordMessage('oinv');
-    lastGemCheckTime = Date.now();
+    lastGemCheckTime = 0;
 
     const sendHunt = async () => {
         const sent = sendDiscordMessage(AUTO_HUNT_COMMAND);
@@ -358,6 +357,73 @@ function parseSuperscriptCount(str) {
 
 const rarityOrder = {'c': 1, 'u': 2, 'r': 3, 'e': 4, 'm': 5, 'l': 6, 'f': 7};
 
+function getBestGemCombination(gems, currentActiveRarities) {
+    const type1Gems = gems.filter(g => g.type === 1);
+    const type3Gems = gems.filter(g => g.type === 3);
+    const type4Gems = gems.filter(g => g.type === 4);
+
+    if (type1Gems.length === 0 && type3Gems.length === 0 && type4Gems.length === 0) {
+        return [];
+    }
+    
+    const t1 = type1Gems.length > 0 ? type1Gems : [null];
+    const t3 = type3Gems.length > 0 ? type3Gems : [null];
+    const t4 = type4Gems.length > 0 ? type4Gems : [null];
+
+    const combinations = [];
+    for (const g1 of t1) {
+        for (const g3 of t3) {
+            for (const g4 of t4) {
+                combinations.push([g1, g3, g4].filter(Boolean));
+            }
+        }
+    }
+
+    if (combinations.length === 0) return [];
+
+    let targetRarityVal = null;
+    if (currentActiveRarities && currentActiveRarities.length > 0) {
+         let sum = 0;
+         currentActiveRarities.forEach(r => sum += rarityOrder[r]);
+         targetRarityVal = Math.round(sum / currentActiveRarities.length);
+    }
+
+    combinations.forEach(combo => {
+        let maxR = 0, minR = 99, sumR = 0;
+        combo.forEach(g => {
+            let val = rarityOrder[g.rarity];
+            if (val > maxR) maxR = val;
+            if (val < minR) minR = val;
+            sumR += val;
+        });
+        
+        let targetPenalty = 0;
+        if (targetRarityVal !== null) {
+             let avgR = sumR / combo.length;
+             targetPenalty = Math.abs(avgR - targetRarityVal);
+        }
+        
+        combo.span = combo.length <= 1 ? 0 : (maxR - minR);
+        combo.sum = sumR;
+        combo.targetPenalty = targetPenalty;
+    });
+
+    combinations.sort((a, b) => {
+        if (a.length !== b.length) return b.length - a.length;
+        if (a.span !== b.span) return a.span - b.span;
+        
+        if (targetRarityVal !== null) {
+            if (Math.abs(a.targetPenalty - b.targetPenalty) > 0.01) {
+                 return a.targetPenalty - b.targetPenalty;
+            }
+        }
+
+        return b.sum - a.sum;
+    });
+
+    return combinations[0];
+}
+
 window.poketwoProcessOwOMessage = function(messageNode) {
     const textNode = messageNode.querySelector('[id^="message-content-"]');
     if (!textNode) return;
@@ -402,18 +468,8 @@ window.poketwoProcessOwOMessage = function(messageNode) {
         });
 
         if (gems.length > 0) {
-            let best1, best3, best4;
-            for (const g of gems) {
-                if (g.type === 1) {
-                    if (!best1 || rarityOrder[g.rarity] > rarityOrder[best1.rarity]) best1 = g;
-                } else if (g.type === 3) {
-                    if (!best3 || rarityOrder[g.rarity] > rarityOrder[best3.rarity]) best3 = g;
-                } else if (g.type === 4) {
-                    if (!best4 || rarityOrder[g.rarity] > rarityOrder[best4.rarity]) best4 = g;
-                }
-            }
-
-            const toUse = [best1, best3, best4].filter(Boolean).map(g => g.code);
+            const bestCombo = getBestGemCombination(gems, window.poketwoTargetGemRarities);
+            const toUse = bestCombo.map(g => g.code);
             if (toUse.length > 0) {
                 setTimeout(() => {
                     sendDiscordMessage(`ouse ${toUse.join(' ')}`);
@@ -430,13 +486,22 @@ window.poketwoProcessOwOMessage = function(messageNode) {
         let hasZeroUses = false;
         
         if (isEmpowered) {
+            const activeRarities = [];
             const imgs = textNode.querySelectorAll('img.emoji');
             imgs.forEach(img => {
                 const alt = img.getAttribute('alt') || '';
-                if (/[a-z]gem1/i.test(alt)) hasType1 = true;
-                if (/[a-z]gem3/i.test(alt)) hasType3 = true;
-                if (/[a-z]gem4/i.test(alt)) hasType4 = true;
+                const match = alt.match(/:([a-z])gem(\d):/i);
+                if (match) {
+                    if (match[2] === '1') hasType1 = true;
+                    if (match[2] === '3') hasType3 = true;
+                    if (match[2] === '4') hasType4 = true;
+                    activeRarities.push(match[1].toLowerCase());
+                }
             });
+
+            if (activeRarities.length > 0) {
+                window.poketwoTargetGemRarities = activeRarities;
+            }
 
             if (text.includes('[0/')) {
                 hasZeroUses = true;
