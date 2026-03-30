@@ -1,40 +1,56 @@
-name: Build Extension Zip
+name: Build Extension Zip and Release
 
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
 
 jobs:
-  build:
+  build_and_release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed if you want to push commits or create releases
+      contents: write # Needed to create tags and releases
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Read Version from Manifest
+        id: get_version
+        run: |
+          VERSION=$(jq -r '.version' manifest.json)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Found version: $VERSION"
+
       - name: Create Zip File
         run: |
-          # Zips all files in the directory except .git, .github, test HTML files, and other zip files.
-          # You can customize the ignored files after the -x flag.
-          zip -r extension.zip . -x "*.git*" -x "*.github*" -x "*.html" -x "split.js" -x "*.zip"
+          # Zips files excluding dev/test/unrelated files
+          zip -r extension.zip . -x "*.git*" -x "*.github*" -x "*.html" -x "split.js" -x "*.zip" -x "build-and-commit.ps1"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firefox-extension-zip
+          name: firefox-extension-zip-v${{ env.VERSION }}
           path: extension.zip
 
-      # Uncomment the block below if you want the action to literally commit the .zip back into your repository branch!
-      # Note: Committing binary files continuously can inflate repository size. Uploading as an artifact (above) or using Releases is preferred.
-      #
-      # - name: Commit and Push Zip
-      #   run: |
-      #     git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      #     git config --local user.name "github-actions[bot]"
-      #     git add extension.zip
-      #     git commit -m "Auto-generate extension.zip" || echo "No changes to commit"
-      #     git push
+      - name: Check if Release Exists
+        id: check_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ env.VERSION }}" > /dev/null 2>&1; then
+            echo "Release v${{ env.VERSION }} already exists. Skipping release creation."
+            echo "EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "Release v${{ env.VERSION }} does not exist. Will create new release."
+            echo "EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create GitHub Release
+        if: env.EXISTS == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ env.VERSION }}" extension.zip \
+            --title "Release v${{ env.VERSION }}" \
+            --generate-notes \
+            --target "${{ github.sha }}"
