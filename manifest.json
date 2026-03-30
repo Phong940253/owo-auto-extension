@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Poketwo Image Forwarder (Firefox)",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Detects Poketwo spawns and asks Gemini to identify Pokémon from image files.",
     "permissions": [
         "tabs",

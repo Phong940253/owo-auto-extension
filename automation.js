@@ -1,5 +1,6 @@
 let lastGemCheckTime = 0;
 const GEM_CHECK_COOLDOWN_MS = 120_000;
+let isWaitingForInventory = false;
 
 function isAutoHuntEnabled() {
     return autoHuntTimeoutId !== null;
@@ -474,6 +475,9 @@ window.poketwoProcessOwOMessage = function(messageNode) {
     const text = textNode.textContent;
 
     if (text.includes("'s Inventory ======")) {
+        if (!isWaitingForInventory) return;
+        isWaitingForInventory = false;
+
         const gems = [];
         const codes = textNode.querySelectorAll('code.inline');
         codes.forEach(codeNode => {
@@ -560,7 +564,11 @@ window.poketwoProcessOwOMessage = function(messageNode) {
             if (now - lastGemCheckTime > GEM_CHECK_COOLDOWN_MS) {
                 lastGemCheckTime = now;
                 setTimeout(() => {
+                    isWaitingForInventory = true;
                     sendDiscordMessage('oinv');
+                    setTimeout(() => {
+                        isWaitingForInventory = false;
+                    }, 10000); // clear state if no inventory responds
                 }, 1500);
             }
         }

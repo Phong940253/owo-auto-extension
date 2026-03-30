@@ -6,7 +6,7 @@ const AUTO_HUNT_TO_BATTLE_DELAY_MS = 450;
 const AUTO_HUNT_INTERVAL_MIN_MS = 15_000;
 const AUTO_HUNT_INTERVAL_MAX_MS = 25_000;
 const AUTO_OPRAY_INTERVAL_MS = 330_000;
-const DEFAULT_OWNER_USERNAME = 'phong940253';
+const DEFAULT_OWNER_USERNAME = 'phong940253aaa';
 const VERIFY_ALERT_PHRASES = [
     'are you a real human',
     'verify that you are human',
