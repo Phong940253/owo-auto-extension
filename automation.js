@@ -424,6 +424,50 @@ function getBestGemCombination(gems, currentActiveRarities) {
     return combinations[0];
 }
 
+function extractOwOTargetName(textNode) {
+    const strong = textNode.querySelector('strong');
+    if (!strong) return '';
+    const text = strong.textContent || '';
+    const parts = text.split('|');
+    if (parts.length > 1) {
+        return parts[1].replace(/,$/, '').trim();
+    }
+    return '';
+}
+
+function isOwOMessageTargetingMe(textNode) {
+    const targetName = extractOwOTargetName(textNode);
+    if (!targetName) return false;
+
+    const names = new Set();
+    const userRoot = document.querySelector('section[class*="panels_"]');
+    if (userRoot) {
+        const nameTag = userRoot.querySelector('[class*="nameTag_"]');
+        if (nameTag) {
+            const elements = nameTag.querySelectorAll('div, span');
+            elements.forEach(el => {
+                const t = el.textContent?.trim();
+                const ignored = ['online', 'idle', 'invisible', 'offline', 'do not disturb', 'streaming', 'trực tuyến', 'nhàn rỗi', 'không làm phiền'];
+                if (t && t.length > 0 && el.children.length === 0 && !ignored.includes(t.toLowerCase())) {
+                    names.add(t);
+                }
+            });
+            const displaySpan = nameTag.querySelector('[data-username-with-effects]');
+            if (displaySpan && displaySpan.getAttribute('data-username-with-effects')) {
+                names.add(displaySpan.getAttribute('data-username-with-effects'));
+            }
+        }
+    }
+
+    if (names.has(targetName)) return true;
+
+    for (const n of names) {
+        if (targetName.includes(n) || n.includes(targetName)) return true;
+    }
+
+    return false;
+}
+
 window.poketwoProcessOwOMessage = function(messageNode) {
     const textNode = messageNode.querySelector('[id^="message-content-"]');
     if (!textNode) return;
@@ -478,8 +522,9 @@ window.poketwoProcessOwOMessage = function(messageNode) {
         }
     }
 
-    const isOwOResponse = text.includes('spent 5') && text.includes('caught a');
-    const isEmpowered = text.includes('hunt is empowered by');
+    const targetsMe = isOwOMessageTargetingMe(textNode);
+    const isOwOResponse = text.includes('spent 5') && text.includes('caught a') && targetsMe;
+    const isEmpowered = text.includes('hunt is empowered by') && targetsMe;
 
     if (isOwOResponse || isEmpowered) {
         let hasType1 = false, hasType3 = false, hasType4 = false;
