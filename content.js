@@ -57,6 +57,10 @@ const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
         mutation.addedNodes.forEach(node => {
             if (node.nodeType === 1) {
+                if (window.poketwoProcessOwOMessage) {
+                    window.poketwoProcessOwOMessage(node);
+                }
+
                 const verifyNodes = getOwOVerifyMessageNodes(node);
                 verifyNodes.forEach((messageNode) => {
                     const verifyFingerprint = getVerifyMessageFingerprint(messageNode);

@@ -1,3 +1,6 @@
+let lastGemCheckTime = 0;
+const GEM_CHECK_COOLDOWN_MS = 120_000;
+
 function isAutoHuntEnabled() {
     return autoHuntTimeoutId !== null;
 }
@@ -107,6 +110,9 @@ function startAutoHunt() {
     if (autoHuntTimeoutId !== null) {
         return;
     }
+
+    sendDiscordMessage('oinv');
+    lastGemCheckTime = Date.now();
 
     const sendHunt = async () => {
         const sent = sendDiscordMessage(AUTO_HUNT_COMMAND);
@@ -341,3 +347,107 @@ function initAutoHuntOverlay() {
     }, { once: true });
 }
 
+const superscriptMap = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9'};
+function parseSuperscriptCount(str) {
+    if (!str) return 0;
+    let s = str.trim();
+    if (s === '') return 1;
+    let numStr = s.split('').map(c => superscriptMap[c] !== undefined ? superscriptMap[c] : '').join('');
+    return parseInt(numStr, 10) || 0;
+}
+
+const rarityOrder = {'c': 1, 'u': 2, 'r': 3, 'e': 4, 'm': 5, 'l': 6, 'f': 7};
+
+window.poketwoProcessOwOMessage = function(messageNode) {
+    const textNode = messageNode.querySelector('[id^="message-content-"]');
+    if (!textNode) return;
+    const text = textNode.textContent;
+
+    if (text.includes("'s Inventory ======")) {
+        const gems = [];
+        const codes = textNode.querySelectorAll('code.inline');
+        codes.forEach(codeNode => {
+            const itemCode = codeNode.textContent.trim();
+            let curr = codeNode.nextSibling;
+            let altText = '';
+            while (curr) {
+                if (curr.nodeType === 1 && (curr.classList.contains('emojiContainer__75abc') || (curr.querySelector && curr.querySelector('.emoji')))) {
+                    const img = curr.nodeName === 'IMG' ? curr : curr.querySelector('img.emoji');
+                    if (img) altText = img.getAttribute('alt') || '';
+                    curr = curr.nextSibling;
+                    break;
+                }
+                curr = curr.nextSibling;
+            }
+
+            let countText = '';
+            if (curr && curr.nodeType === Node.TEXT_NODE) {
+                countText = curr.textContent;
+            } else if (curr && curr.nodeName === 'SPAN') {
+                countText = curr.textContent;
+            }
+
+            const count = parseSuperscriptCount(countText);
+            if (altText && count > 0) {
+                const match = altText.match(/:([a-z])gem(\d):/i);
+                if (match) {
+                    gems.push({
+                        code: itemCode,
+                        rarity: match[1].toLowerCase(),
+                        type: parseInt(match[2], 10),
+                        count: count
+                    });
+                }
+            }
+        });
+
+        if (gems.length > 0) {
+            let best1, best3, best4;
+            for (const g of gems) {
+                if (g.type === 1) {
+                    if (!best1 || rarityOrder[g.rarity] > rarityOrder[best1.rarity]) best1 = g;
+                } else if (g.type === 3) {
+                    if (!best3 || rarityOrder[g.rarity] > rarityOrder[best3.rarity]) best3 = g;
+                } else if (g.type === 4) {
+                    if (!best4 || rarityOrder[g.rarity] > rarityOrder[best4.rarity]) best4 = g;
+                }
+            }
+
+            const toUse = [best1, best3, best4].filter(Boolean).map(g => g.code);
+            if (toUse.length > 0) {
+                setTimeout(() => {
+                    sendDiscordMessage(`ouse ${toUse.join(' ')}`);
+                }, 1000);
+            }
+        }
+    }
+
+    const isOwOResponse = text.includes('spent 5') && text.includes('caught a');
+    const isEmpowered = text.includes('hunt is empowered by');
+
+    if (isOwOResponse || isEmpowered) {
+        let hasType1 = false, hasType3 = false, hasType4 = false;
+        
+        if (isEmpowered) {
+            const imgs = textNode.querySelectorAll('img.emoji');
+            imgs.forEach(img => {
+                const alt = img.getAttribute('alt') || '';
+                if (/[a-z]gem1/i.test(alt)) hasType1 = true;
+                if (/[a-z]gem3/i.test(alt)) hasType3 = true;
+                if (/[a-z]gem4/i.test(alt)) hasType4 = true;
+            });
+        }
+
+        const missingGems = !isEmpowered || !hasType1 || !hasType3 || !hasType4;
+
+        if (missingGems && isAutoHuntEnabled()) {
+            const now = Date.now();
+            if (now - lastGemCheckTime > GEM_CHECK_COOLDOWN_MS) {
+                lastGemCheckTime = now;
+                setTimeout(() => {
+                    sendDiscordMessage('oinv');
+                }, 1500);
+            }
+        }
+    }
+};
