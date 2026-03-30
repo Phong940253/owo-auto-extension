@@ -427,6 +427,7 @@ window.poketwoProcessOwOMessage = function(messageNode) {
 
     if (isOwOResponse || isEmpowered) {
         let hasType1 = false, hasType3 = false, hasType4 = false;
+        let hasZeroUses = false;
         
         if (isEmpowered) {
             const imgs = textNode.querySelectorAll('img.emoji');
@@ -436,9 +437,13 @@ window.poketwoProcessOwOMessage = function(messageNode) {
                 if (/[a-z]gem3/i.test(alt)) hasType3 = true;
                 if (/[a-z]gem4/i.test(alt)) hasType4 = true;
             });
+
+            if (text.includes('[0/')) {
+                hasZeroUses = true;
+            }
         }
 
-        const missingGems = !isEmpowered || !hasType1 || !hasType3 || !hasType4;
+        const missingGems = !isEmpowered || !hasType1 || !hasType3 || !hasType4 || hasZeroUses;
 
         if (missingGems && isAutoHuntEnabled()) {
             const now = Date.now();
