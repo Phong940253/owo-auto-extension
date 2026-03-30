@@ -1,0 +1,40 @@
+name: Build Extension Zip
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed if you want to push commits or create releases
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Zip File
+        run: |
+          # Zips all files in the directory except .git, .github, test HTML files, and other zip files.
+          # You can customize the ignored files after the -x flag.
+          zip -r extension.zip . -x "*.git*" -x "*.github*" -x "*.html" -x "split.js" -x "*.zip"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-extension-zip
+          path: extension.zip
+
+      # Uncomment the block below if you want the action to literally commit the .zip back into your repository branch!
+      # Note: Committing binary files continuously can inflate repository size. Uploading as an artifact (above) or using Releases is preferred.
+      #
+      # - name: Commit and Push Zip
+      #   run: |
+      #     git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      #     git config --local user.name "github-actions[bot]"
+      #     git add extension.zip
+      #     git commit -m "Auto-generate extension.zip" || echo "No changes to commit"
+      #     git push
